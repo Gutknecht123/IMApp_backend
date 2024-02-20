@@ -336,14 +336,13 @@ io.on('connection', (socket) => {
         if(data.file != null){
 
             const formData = data.file
-            fileName = formData._parts.find(part => part[0] === 'file')[1][0].name;
-            const fileBuffer = formData._parts.find(part => part[0] === 'file')[1][0].uri;
-
+            fileName = formData
+     
             filePath = __dirname + '/uploads/' + fileName
             url = 'uploads/' + fileName
         
             console.log(fileName)
-            console.log(fileBuffer)
+       
 
         }
 
