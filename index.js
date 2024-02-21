@@ -132,7 +132,7 @@ app.get('/api/officemessages', async(req, res) => {
 
     try{
         const projection = { name: 1, email: 1, role: 1, surname: 1, username: 1, _id: 0 }
-        const users = await User.find({}, 'name surname email role username roomID')
+        const users = await User.find({}, 'name surname email role username roomID lastMessage')
         //let count = req.query.count
         //console.log(chat[0].messages)
         console.log("To users")
@@ -157,6 +157,23 @@ app.get('/api/importantmessages', async(req, res) => {
 
 })
 
+app.post('/api/deleteIM', jsonParser, async(req, res, next) => {
+        try{
+
+            await importantMessage.deleteOne({_id: req.body.postID})
+
+            return res.status(201).send({ 
+                message: "Usunięto ogłoszenie"
+            })
+
+        }catch(err){
+            console.log(err)
+            return res.status(400).send({ 
+                message: "Błąd podczas logowania"
+            })
+        }
+})
+
 app.get('/api/download/:fileName', async(req, res) => {
     try{
         
@@ -174,7 +191,10 @@ app.post('/api/userLogin', jsonParser, async (req, res)=>{
 
     try{
         //Szukamy użytwkonika w bazie
-        const user = await User.find({ email: req.body.email })
+        const searchTerm = req.body.email
+        const regexPattern = new RegExp(searchTerm, "i");
+
+        const user = await User.find({ email: { $regex: regexPattern } })
         if(user.length == 0){
             return res.status(400).send({ 
                 message : "Nie znaleziono użytkownika"
@@ -212,6 +232,67 @@ app.post('/api/userLogin', jsonParser, async (req, res)=>{
     }
 })
 
+app.post('/api/changePass', jsonParser, async(req, res, next) => {
+
+    try{
+
+        const searchTerm = req.body.email
+        const regexPattern = new RegExp(searchTerm, "i");
+
+        const user = await User.find({ email: { $regex: regexPattern } })
+        if(user.length == 0){
+            return res.status(400).send({ 
+                message : "Nie znaleziono użytkownika"
+            })
+        }else{
+            //Sprawdzamy czy dane się zgadzają
+            if(validatePassword(req.body.pass, user[0].hash, user[0].salt)){
+                
+                var hash = crypto.pbkdf2Sync(req.body.newPass, user[0].salt, 1000, 64, 'sha512').toString('hex')
+
+                await User.updateOne(
+                    { email: { $regex: regexPattern } },
+                    {
+                        $set:{
+                            hash: hash
+                        }
+                    }
+                )
+
+                const mailData = {
+                    from: "imappnotifier@gmail.com",
+                    to: req.body.email,
+                    subject: "Hasło do konta zostało zmienione.",
+                    text: `Twoje hasło do naszej aplikacji Hillconnect Hub zostało zmienione. Oto twoje nowe dane logowania. Login: ${req.body.email} Hasło: ${req.body.newPass}`,
+                    html: `<b>Twoje hasło do naszej aplikacji Hillconnect Hub zostało zmienione.</b><br>Oto twoje nowe dane logowania.<br>Login: ${req.body.email} <br> Hasło: ${req.body.newPass}</br>`
+                }
+        
+                transporter.sendMail(mailData, (err, info)=>{
+                    if(err){
+                        return console.log(err)
+                    }
+                })
+
+                return res.status(201).send({ 
+                    message: "Pomyślnie zmieniono hasło"
+                })
+                
+            }else{
+                return res.status(400).send({ 
+                    message : "Błędne hasło"
+                })
+            }
+        }
+
+    }catch(err){
+        console.log(err)
+        return res.status(400).send({ 
+            message: "Wystąpił nieoczekiwany błąd"
+        })
+    }
+
+})
+
 app.post('/api/userRegister', jsonParser, async (req, res, next) => {
 
     try{
@@ -245,23 +326,49 @@ app.post('/api/userRegister', jsonParser, async (req, res, next) => {
             }while(temp[0].roomID == room)
         }
 
+        const usernameTerm = req.body.username
+        const usernamePattern = new RegExp(usernameTerm, "i");
+
+        const checkUsername = await User.find({ username: { $regex: usernamePattern } })
+
+        if(checkUsername != ''){
+            return res.status(400).send({ 
+                message: "Nazwa użytkownika zajęta!"
+            })
+        }
+
+        const emailTerm = req.body.username
+        const emailPattern = new RegExp(emailTerm, "i");
+
+        const checkEmail = await User.find({email: { $regex: emailPattern } })
+
+        if(checkEmail != ''){
+            return res.status(400).send({ 
+                message: "Email jest już w użyciu!"
+            })
+        }
+
+        let low_email = req.body.email
         //Przypisanie danych do obiektu newUser
         newUser.name = req.body.name
-        newUser.email = req.body.email
+        newUser.email = low_email.toLowerCase()
         newUser.role = req.body.role
         newUser.surname = req.body.surname
-        newUser.username = req.body.username
+        newUser.username = usernameTerm.toLowerCase()
         newUser.roomID = room
         newUser.salt = salt
         newUser.hash = hash
+        newUser.lastMessage = new Date()
         newMessage.host = "biuro"
-        newMessage.username = req.body.username
+        newMessage.username = usernameTerm.toLowerCase()
         newMessage.roomID = room
         newMessage.messages = [
             {
                 body: "To początek twoich wiadomości z naszym biurem",
                 sender: "biuro",
-                createdAt: ""
+                createdAt: new Date(),
+                filePath: null,
+                fileName: null
             }
         ]
         //Zapisujemy użytkownika do bazy
@@ -272,8 +379,8 @@ app.post('/api/userRegister', jsonParser, async (req, res, next) => {
             from: "imappnotifier@gmail.com",
             to: req.body.email,
             subject: "Twoje konto zostało założone!",
-            text: `Zostałeś dodany do korzystania z aplikacji Hillconnect Hub! Oto twoje dane logowania. Login: ${req.body.username} Hasło: ${req.body.password}`,
-            html: `<b>Zostałeś dodany do korzystania z aplikacji Hillconnect Hub!</b><br>Oto twoje dane logowania.<br>Login: ${req.body.username} <br> Hasło: ${req.body.password}</br>`
+            text: `Zostałeś dodany do korzystania z aplikacji Hillconnect Hub! Oto twoje dane logowania. Login: ${req.body.email} Hasło: ${req.body.password}`,
+            html: `<b>Zostałeś dodany do korzystania z aplikacji Hillconnect Hub!</b><br>Oto twoje dane logowania.<br>Login: ${req.body.email} <br> Hasło: ${req.body.password}</br>`
         }
 
         transporter.sendMail(mailData, (err, info)=>{
@@ -345,21 +452,30 @@ io.on('connection', (socket) => {
        
 
         }
-
+        const mess_date = new Date()
         await Message.updateOne(
             { username: data.username },
             {
                 $set:{
-                    username: data.username
+                    lastMessage: mess_date
                 },
                 $push:{
                     messages: {
                         body: data.message,
                         sender: data.sender,
-                        createdAt: "",
+                        createdAt: mess_date,
                         filePath: url,
                         fileName: fileName
                     }
+                }
+            },
+            {upsert: true}
+        )
+        await User.updateOne(
+            { username: data.username },
+            {
+                $set:{
+                    lastMessage: mess_date
                 }
             },
             {upsert: true}
@@ -386,8 +502,9 @@ io.on('connection', (socket) => {
         newIM.author = data.author
         newIM.message = [{
             body: data.body,
-            createdAt: ""
+            createdAt: new Date()
         }]
+        newIM.forWorkers = data.forWorkers
 
         await newIM.save()
 

@@ -26,6 +26,8 @@ const UserSchema = mongoose.Schema({
         type: String,
         required: true
     },
+    createdAt: { type: Date, default: Date.now },
+    lastMessage: { type: Date, default: Date.now },
     hash: String,
     salt: String
 })

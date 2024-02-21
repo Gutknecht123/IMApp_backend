@@ -8,10 +8,11 @@ const MessageSchema = mongoose.Schema({
     messages: [{
         body: {type: String, min: 1, max: 200},
         sender: {type: String},
-        createdAt: { type: Date },
+        createdAt: { type: Date, default: Date.now },
         filePath: { type: String },
         fileName: { type: String }
-    }]
+    }],
+    lastMessage: { type: Date, default: Date.now }
 })
 
 module.exports = mongoose.model('messages', MessageSchema)
