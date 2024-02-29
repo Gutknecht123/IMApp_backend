@@ -78,7 +78,7 @@ function authenticateToken(req,res,next){
 
 function generateAccessToken(name, password){
     //Zwracamy json web token
-    return jwt.sign(name, process.env.TOKEN_SECRET, { expiresIn: '20000s' })
+    return jwt.sign(name, process.env.TOKEN_SECRET, { expiresIn: '365d' })
 }
 
 function validatePassword(password, userHash, userSalt){
@@ -90,7 +90,7 @@ app.get('/', async(req, res) => {
     res.send({status: 'OK'})
 })
 
-app.post('/api/fileUpload', upload.single('file'), (req, res) => {
+app.post('/api/fileUpload', authenticateToken, upload.single('file'), (req, res) => {
     console.log('plik')
     if(!req.file){
         return res.status(400).json({ error: 'Brak pliku' })
@@ -99,7 +99,7 @@ app.post('/api/fileUpload', upload.single('file'), (req, res) => {
     return res.status(200).json({ message: 'Plik przeslany' })
 })
 
-app.get('/api/messages', async(req, res) => {
+app.get('/api/messages', authenticateToken, async(req, res) => {
 
     try{
         const chat = await Message.find({ username: req.query.username })
@@ -128,7 +128,7 @@ app.get('/api/messages', async(req, res) => {
     }
 })
 
-app.get('/api/officemessages', async(req, res) => {
+app.get('/api/officemessages', authenticateToken, async(req, res) => {
 
     try{
         const projection = { name: 1, email: 1, role: 1, surname: 1, username: 1, _id: 0 }
@@ -145,7 +145,7 @@ app.get('/api/officemessages', async(req, res) => {
     }
 })
 
-app.get('/api/importantmessages', async(req, res) => {
+app.get('/api/importantmessages', authenticateToken, async(req, res) => {
     try{
 
         const im = await importantMessage.find({})
@@ -157,7 +157,7 @@ app.get('/api/importantmessages', async(req, res) => {
 
 })
 
-app.post('/api/deleteIM', jsonParser, async(req, res, next) => {
+app.post('/api/deleteIM', jsonParser, authenticateToken, async(req, res, next) => {
         try{
 
             await importantMessage.deleteOne({_id: req.body.postID})
@@ -232,7 +232,7 @@ app.post('/api/userLogin', jsonParser, async (req, res)=>{
     }
 })
 
-app.post('/api/changePass', jsonParser, async(req, res, next) => {
+app.post('/api/changePass', jsonParser, authenticateToken, async(req, res, next) => {
 
     try{
 
@@ -293,7 +293,7 @@ app.post('/api/changePass', jsonParser, async(req, res, next) => {
 
 })
 
-app.post('/api/userRegister', jsonParser, async (req, res, next) => {
+app.post('/api/userRegister', jsonParser, authenticateToken, async (req, res, next) => {
 
     try{
         let newUser = new User()
@@ -400,12 +400,15 @@ app.post('/api/userRegister', jsonParser, async (req, res, next) => {
     }
 })
 
-app.get('/api/test', (req, res)=>{
+app.get('/api/test', authenticateToken, (req, res)=>{
     res.send({status: 'OK'})
 })
 
 //Socket
+
 io.use((socket, next) => {
+    /*
+    
     const sessionID = socket.handshake.auth.sessionID;
     if (sessionID) {
       // find existing session
@@ -422,18 +425,27 @@ io.use((socket, next) => {
       return next(new Error("invalid username"));
     }
     // create new session
-    socket.sessionID = 5
-    socket.userID = 123
-    socket.username = username;
-    next();
-  });
+    const token = socket.handshake.query.token
 
+    if(token == null) return next(new Error('Authentication failed'))
+    next();
+    
+        
+
+
+        jwt.verify(token, process.env.TOKEN_SECRET, (err, user)=>{
+            
+            if(err) return next(new Error('Authentication failed'))
+
+            next()
+        })
+
+    */
+        next()
+  });
+  
 io.on('connection', (socket) => {
     console.log(socket.id)
-    socket.emit("session", {
-        sessionID: socket.sessionID,
-        userID: socket.userID,
-    });
 
     socket.on('private_message', async(data)=>{
         console.log(data.file)
